@@ -2,3 +2,7 @@ bin/
 obj/
 *.user
 .vs/
+
+# React client app (built during CI, output lands in wwwroot)
+src/TestCicd.Web/ClientApp/node_modules/
+src/TestCicd.Web/wwwroot/
