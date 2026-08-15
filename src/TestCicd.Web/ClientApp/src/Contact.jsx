@@ -1,11 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // Replace with your real Formspree form ID (from https://formspree.io/forms).
 const FORMSPREE_FORM_ID = 'YOUR_FORM_ID'
 const FORMSPREE_ENDPOINT = `https://formspree.io/f/${FORMSPREE_FORM_ID}`
 
-export default function Contact() {
+export default function ContactModal({ open, onClose }) {
   const [status, setStatus] = useState('idle') // idle | submitting | success | error
+
+  useEffect(() => {
+    if (!open) return
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = ''
+    }
+  }, [open, onClose])
+
+  if (!open) return null
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -32,10 +48,25 @@ export default function Contact() {
   }
 
   return (
-    <section id="contact" className="px-6 py-16">
-      <div className="mx-auto max-w-2xl rounded-3xl border border-neutral-200 bg-white p-10 shadow-sm sm:p-14 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-neutral-950/60 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-2xl rounded-3xl border border-neutral-200 bg-white p-8 shadow-2xl sm:p-12 dark:border-neutral-800 dark:bg-neutral-900">
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="absolute top-5 right-5 flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+        >
+          ✕
+        </button>
+
         <div className="mb-8 text-center">
-          <h2 className="mb-3 text-[1.6rem] font-bold tracking-tight sm:text-3xl">Have a workflow worth automating?</h2>
+          <h2 className="mb-3 text-[1.5rem] font-bold tracking-tight sm:text-2xl">Have a workflow worth automating?</h2>
           <p className="text-neutral-500 dark:text-neutral-400">
             Let's talk about what's slowing your team down and where AI can actually help.
           </p>
@@ -99,7 +130,7 @@ export default function Contact() {
 
             {status === 'error' && (
               <p className="text-sm font-medium text-red-500">
-                Something went wrong sending that — try again, or email tina.dave.wai@gmail.com directly.
+                Something went wrong sending that — try again, or email dave.wai@outlook.com directly.
               </p>
             )}
 
@@ -113,6 +144,6 @@ export default function Contact() {
           </form>
         )}
       </div>
-    </section>
+    </div>
   )
 }
