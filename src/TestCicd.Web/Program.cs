@@ -5,7 +5,7 @@ builder.Services.AddSingleton<IGreeter, Greeter>();
 
 var app = builder.Build();
 
-app.MapGet("/", () => "Hello World V2");
+app.MapGet("/", () => "Hello World V3");
 app.MapGet("/healthz", () => Results.Ok(new { status = "Healthy" }));
 
 app.Run();
