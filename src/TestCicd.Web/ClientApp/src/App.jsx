@@ -1,3 +1,5 @@
+import Contact from './Contact.jsx'
+
 const services = [
   {
     icon: '⚙️',
@@ -51,9 +53,10 @@ function Nav() {
           <a href="#about" className="transition-colors hover:text-neutral-900 dark:hover:text-neutral-50">About</a>
           <a href="#services" className="transition-colors hover:text-neutral-900 dark:hover:text-neutral-50">Services</a>
           <a href="#projects" className="transition-colors hover:text-neutral-900 dark:hover:text-neutral-50">Projects</a>
+          <a href="#contact" className="transition-colors hover:text-neutral-900 dark:hover:text-neutral-50">Contact</a>
         </nav>
         <a
-          href="mailto:tina.dave.wai@gmail.com"
+          href="#contact"
           className="whitespace-nowrap rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white dark:bg-white dark:text-neutral-900"
         >
           Get in touch
@@ -90,7 +93,7 @@ function Hero() {
             See recent work
           </a>
           <a
-            href="mailto:tina.dave.wai@gmail.com"
+            href="#contact"
             className="rounded-full border border-neutral-200 bg-white px-6 py-3.5 text-[0.95rem] font-semibold transition-colors hover:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-600"
           >
             Book a call
@@ -207,25 +210,6 @@ function Projects() {
   )
 }
 
-function CtaBand() {
-  return (
-    <section className="px-6 py-16">
-      <div className="mx-auto max-w-3xl rounded-3xl border border-neutral-200 bg-white p-14 text-center shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="mb-3 text-[1.6rem] font-bold tracking-tight sm:text-3xl">Have a workflow worth automating?</h2>
-        <p className="mb-7 text-neutral-500 dark:text-neutral-400">
-          Let's talk about what's slowing your team down and where AI can actually help.
-        </p>
-        <a
-          href="mailto:tina.dave.wai@gmail.com"
-          className="inline-block rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400 px-6 py-3.5 text-[0.95rem] font-semibold text-white shadow-lg shadow-indigo-500/30 transition-transform hover:-translate-y-0.5"
-        >
-          Get in touch
-        </a>
-      </div>
-    </section>
-  )
-}
-
 function Footer() {
   return (
     <footer className="border-t border-neutral-200 px-6 py-8 text-center text-sm text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
@@ -255,7 +239,7 @@ export default function App() {
         <About />
         <Services />
         <Projects />
-        <CtaBand />
+        <Contact />
       </main>
       <Footer />
     </div>
