@@ -1,7 +1,8 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+# Docs: https://learn.microsoft.com/azure/container-apps/github-actions-cli
+# Builds a container image, pushes it to GitHub Container Registry, then
+# rolls it out to the QA Container App and, after approval, the Prod one.
 
-name: Build and deploy ASP.Net Core app to Azure Web App - testcicd
+name: Build and deploy container to Azure Container Apps
 
 on:
   push:
@@ -10,9 +11,11 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: testcicd
   DOTNET_VERSION: '10.x'
-  NODE_VERSION: '22.x'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  CONTAINERAPP_QA: testcicd-qa
+  CONTAINERAPP_PROD: testcicd-prod
 
 jobs:
   build-and-test:
@@ -22,23 +25,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: src/TestCicd.Web/ClientApp/package-lock.json
-
-      - name: Install client dependencies
-        working-directory: src/TestCicd.Web/ClientApp
-        run: npm ci
-
-      # Builds the React app straight into wwwroot (see vite.config.js), so it's
-      # already in place as a static asset before dotnet build/publish run.
-      - name: Build client app
-        working-directory: src/TestCicd.Web/ClientApp
-        run: npm run build
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -54,31 +40,52 @@ jobs:
       - name: Run unit tests
         run: dotnet test --configuration Release --no-build --verbosity normal
 
-      - name: dotnet publish
-        run: dotnet publish src/TestCicd.Web/TestCicd.Web.csproj -c Release -o ${{ env.DOTNET_ROOT }}/myapp --no-build
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: .net-app
-          path: ${{ env.DOTNET_ROOT }}/myapp
-
-  deploy-staging:
+  build-and-push-image:
     runs-on: ubuntu-latest
     needs: build-and-test
+    permissions:
+      contents: read #This is required for actions/checkout
+      packages: write #This is required for pushing to ghcr.io
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record image reference
+        id: meta
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+  deploy-qa:
+    runs-on: ubuntu-latest
+    needs: build-and-push-image
     environment:
-      name: staging
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      name: qa
+      url: https://${{ steps.deploy.outputs.fqdn }}
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: .net-app
-
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -86,13 +93,26 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_83579C3F575B417E98ED37A4057F657B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0D13678203294D9E9D18E5908B378412 }}
 
-      - name: Deploy to Azure Web App slot (staging)
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+      - name: Deploy image to QA Container App
+        id: deploy
+        uses: azure/CLI@v2
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          slot-name: 'staging'
-          package: .
+          inlineScript: |
+            az containerapp update \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --name ${{ env.CONTAINERAPP_QA }} \
+              --image ${{ needs.build-and-push-image.outputs.image }}
+            # The quickstart placeholder image listens on port 80; the real app
+            # listens on 8080, so make sure ingress matches it every deploy.
+            az containerapp ingress update \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --name ${{ env.CONTAINERAPP_QA }} \
+              --target-port 8080
+            fqdn=$(az containerapp show \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --name ${{ env.CONTAINERAPP_QA }} \
+              --query properties.configuration.ingress.fqdn -o tsv)
+            echo "fqdn=$fqdn" >> "$GITHUB_OUTPUT"
 
       - name: Logout from Azure
         run: az logout
@@ -100,12 +120,14 @@ jobs:
 
   promote-to-production:
     runs-on: ubuntu-latest
-    needs: deploy-staging
+    needs:
+      - build-and-push-image
+      - deploy-qa
     # Deployment pauses here until someone approves the "production" environment
     # in the GitHub repo (Settings > Environments > production > Required reviewers).
     environment:
       name: production
-      url: https://${{ steps.get-hostname.outputs.hostname }}
+      url: https://${{ steps.deploy.outputs.fqdn }}
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
@@ -118,31 +140,26 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_83579C3F575B417E98ED37A4057F657B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0D13678203294D9E9D18E5908B378412 }}
 
-      # Azure assigns the default hostname (it may not match AZURE_WEBAPP_NAME if that
-      # name was already taken globally), so look it up instead of guessing it.
-      - name: Get production hostname
-        id: get-hostname
+      # Deploys the exact same image digest that was already validated in QA -
+      # no rebuild, just a rollout of a known-good image to the prod app.
+      - name: Deploy image to Prod Container App
+        id: deploy
         uses: azure/CLI@v2
         with:
           inlineScript: |
-            hostname=$(az webapp show \
+            az containerapp update \
               --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-              --name ${{ env.AZURE_WEBAPP_NAME }} \
-              --query defaultHostName -o tsv)
-            echo "hostname=$hostname" >> "$GITHUB_OUTPUT"
-
-      # Swaps the already-deployed, already-tested staging slot into production.
-      # This promotes the exact bits that were validated in staging - no rebuild,
-      # no redeploy, and it's a zero-downtime swap.
-      - name: Swap staging into production
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            az webapp deployment slot swap \
+              --name ${{ env.CONTAINERAPP_PROD }} \
+              --image ${{ needs.build-and-push-image.outputs.image }}
+            az containerapp ingress update \
               --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-              --name ${{ env.AZURE_WEBAPP_NAME }} \
-              --slot staging \
-              --target-slot production
+              --name ${{ env.CONTAINERAPP_PROD }} \
+              --target-port 8080
+            fqdn=$(az containerapp show \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+              --name ${{ env.CONTAINERAPP_PROD }} \
+              --query properties.configuration.ingress.fqdn -o tsv)
+            echo "fqdn=$fqdn" >> "$GITHUB_OUTPUT"
 
       - name: Logout from Azure
         run: az logout
